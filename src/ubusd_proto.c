@@ -25,8 +25,8 @@ static struct blob_attr *attrbuf[UBUS_ATTR_MAX];
 
 typedef int (*ubusd_cmd_cb)(struct ubusd_client *cl, struct ubusd_msg_buf *ub, struct blob_attr **attr);
 
-static const struct blob_attr_info ubusd_policy[UBUS_ATTR_MAX] = {
-	[UBUS_ATTR_SIGNATURE] = { .type = BLOB_ATTR_NESTED },
+static const struct blob_attr_policy ubusd_policy[UBUS_ATTR_MAX] = {
+	[UBUS_ATTR_SIGNATURE] = { .type = BLOB_ATTR_ARRAY },
 	[UBUS_ATTR_OBJTYPE] = { .type = BLOB_ATTR_INT32 },
 	[UBUS_ATTR_OBJPATH] = { .type = BLOB_ATTR_STRING },
 	[UBUS_ATTR_OBJID] = { .type = BLOB_ATTR_INT32 },
@@ -36,7 +36,7 @@ static const struct blob_attr_info ubusd_policy[UBUS_ATTR_MAX] = {
 
 static struct blob_attr **ubusd_parse_msg(struct blob_attr *msg)
 {
-	blob_parse(msg, attrbuf, ubusd_policy, UBUS_ATTR_MAX);
+	blob_attr_parse(msg, attrbuf, ubusd_policy, UBUS_ATTR_MAX);
 	return attrbuf;
 }
 
@@ -59,7 +59,7 @@ static void ubusd_msg_init(struct ubusd_msg_buf *ub, uint8_t type, uint16_t seq,
 
 static struct ubusd_msg_buf *ubusd_msg_from_blob(bool shared)
 {
-	return ubusd_msg_new(b.head, blob_raw_len(b.head), shared);
+	return ubusd_msg_new(blob_buf_head(&b), blob_buf_size(&b), shared);
 }
 
 static struct ubusd_msg_buf *ubusd_reply_from_blob(struct ubusd_msg_buf *ub, bool shared)
@@ -90,7 +90,7 @@ static bool ubusd_send_hello(struct ubusd_client *cl)
 {
 	struct ubusd_msg_buf *ub;
 
-	blob_buf_init(&b, 0);
+	blob_buf_reset(&b);
 	ub = ubusd_msg_from_blob(true);
 	if (!ub)
 		return false;
@@ -114,19 +114,19 @@ static int ubusd_handle_remove_object(struct ubusd_client *cl, struct ubusd_msg_
 	if (!attr[UBUS_ATTR_OBJID])
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	obj = ubusd_find_object(blob_get_u32(attr[UBUS_ATTR_OBJID]));
+	obj = ubusd_find_object(blob_attr_get_u32(attr[UBUS_ATTR_OBJID]));
 	if (!obj)
 		return UBUS_STATUS_NOT_FOUND;
 
 	if (obj->client != cl)
 		return UBUS_STATUS_PERMISSION_DENIED;
 
-	blob_buf_init(&b, 0);
-	blob_put_int32(&b, UBUS_ATTR_OBJID, obj->id.id);
+	blob_buf_reset(&b);
+	blob_buf_put_i32(&b, obj->id.id);
 
 	/* check if we're removing the object type as well */
 	if (obj->type && obj->type->refcount == 1)
-		blob_put_int32(&b, UBUS_ATTR_OBJTYPE, obj->type->id.id);
+		blob_buf_put_i32(&b, obj->type->id.id);
 
 	ubusd_free_object(obj);
 	ubusd_send_msg_from_blob(cl, ub, UBUS_MSG_DATA);
@@ -142,10 +142,10 @@ static int ubusd_handle_add_object(struct ubusd_client *cl, struct ubusd_msg_buf
 	if (!obj)
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	blob_buf_init(&b, 0);
-	blob_put_int32(&b, UBUS_ATTR_OBJID, obj->id.id);
+	blob_buf_reset(&b);
+	blob_buf_put_i32(&b, obj->id.id);
 	if (attr[UBUS_ATTR_SIGNATURE])
-		blob_put_int32(&b, UBUS_ATTR_OBJTYPE, obj->type->id.id);
+		blob_buf_put_i32(&b, obj->type->id.id);
 
 	ubusd_send_msg_from_blob(cl, ub, UBUS_MSG_DATA);
 	return 0;
@@ -156,17 +156,17 @@ static void ubusd_send_obj(struct ubusd_client *cl, struct ubusd_msg_buf *ub, st
 	struct ubusd_method *m;
 	void *s;
 
-	blob_buf_init(&b, 0);
+	blob_buf_reset(&b);
 
 	if (obj->path.key)
-		blob_put_string(&b, UBUS_ATTR_OBJPATH, obj->path.key);
-	blob_put_int32(&b, UBUS_ATTR_OBJID, obj->id.id);
-	blob_put_int32(&b, UBUS_ATTR_OBJTYPE, obj->type->id.id);
+		blob_buf_put_string(&b, obj->path.key);
+	blob_buf_put_i32(&b, obj->id.id);
+	blob_buf_put_i32(&b, obj->type->id.id);
 
-	s = blob_nest_start(&b, UBUS_ATTR_SIGNATURE);
+	s = blob_buf_open_array(&b);
 	list_for_each_entry(m, &obj->type->methods, list)
-		blobmsg_add_blob(&b, m->data);
-	blob_nest_end(&b, s);
+		blob_buf_put_attr(&b, m->data);
+	blob_buf_close_array(&b, s);
 
 	ubusd_send_msg_from_blob(cl, ub, UBUS_MSG_DATA);
 }
@@ -184,7 +184,7 @@ static int ubusd_handle_lookup(struct ubusd_client *cl, struct ubusd_msg_buf *ub
 		return 0;
 	}
 
-	objpath = blob_data(attr[UBUS_ATTR_OBJPATH]);
+	objpath = blob_attr_data(attr[UBUS_ATTR_OBJPATH]);
 	len = strlen(objpath);
 	if (objpath[len - 1] != '*') {
 		obj = avl_find_element(&path, objpath, obj, path);
@@ -219,10 +219,10 @@ static void
 ubusd_forward_invoke(struct ubusd_object *obj, const char *method,
 		     struct ubusd_msg_buf *ub, struct blob_attr *data)
 {
-	blob_put_int32(&b, UBUS_ATTR_OBJID, obj->id.id);
-	blob_put_string(&b, UBUS_ATTR_METHOD, method);
+	blob_buf_put_i32(&b, obj->id.id);
+	blob_buf_put_string(&b, method);
 	if (data)
-		blob_put(&b, UBUS_ATTR_DATA, blob_data(data), blob_len(data));
+		blob_buf_put_attr(&b, data);
 
 	ubusd_send_msg_from_blob(obj->client, ub, UBUS_MSG_INVOKE);
 }
@@ -236,19 +236,19 @@ static int ubusd_handle_invoke(struct ubusd_client *cl, struct ubusd_msg_buf *ub
 	if (!attr[UBUS_ATTR_METHOD] || !attr[UBUS_ATTR_OBJID])
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	id = ubusd_find_id(&objects, blob_get_u32(attr[UBUS_ATTR_OBJID]));
+	id = ubusd_find_id(&objects, blob_attr_get_u32(attr[UBUS_ATTR_OBJID]));
 	if (!id)
 		return UBUS_STATUS_NOT_FOUND;
 
 	obj = container_of(id, struct ubusd_object, id);
 
-	method = blob_data(attr[UBUS_ATTR_METHOD]);
+	method = blob_attr_data(attr[UBUS_ATTR_METHOD]);
 
 	if (!obj->client)
 		return obj->recv_msg(cl, method, attr[UBUS_ATTR_DATA]);
 
 	ub->hdr.peer = cl->id.id;
-	blob_buf_init(&b, 0);
+	blob_buf_reset(&b);
 	ubusd_forward_invoke(obj, method, ub, attr[UBUS_ATTR_DATA]);
 	ubusd_msg_free(ub);
 
@@ -268,9 +268,9 @@ static int ubusd_handle_notify(struct ubusd_client *cl, struct ubusd_msg_buf *ub
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
 	if (attr[UBUS_ATTR_NO_REPLY])
-		no_reply = blob_get_int8(attr[UBUS_ATTR_NO_REPLY]);
+		no_reply = blob_attr_get_i8(attr[UBUS_ATTR_NO_REPLY]);
 
-	id = ubusd_find_id(&objects, blob_get_u32(attr[UBUS_ATTR_OBJID]));
+	id = ubusd_find_id(&objects, blob_attr_get_u32(attr[UBUS_ATTR_OBJID]));
 	if (!id)
 		return UBUS_STATUS_NOT_FOUND;
 
@@ -279,23 +279,23 @@ static int ubusd_handle_notify(struct ubusd_client *cl, struct ubusd_msg_buf *ub
 		return UBUS_STATUS_PERMISSION_DENIED;
 
 	if (!no_reply) {
-		blob_buf_init(&b, 0);
-		blob_put_int32(&b, UBUS_ATTR_OBJID, id->id);
-		c = blob_nest_start(&b, UBUS_ATTR_SUBSCRIBERS);
+		blob_buf_reset(&b);
+		blob_buf_put_i32(&b, id->id);
+		c = blob_buf_open_array(&b);
 		list_for_each_entry(s, &obj->subscribers, list) {
-			blob_put_int32(&b, 0, s->subscriber->id.id);
+			blob_buf_put_i32(&b, s->subscriber->id.id);
 		}
-		blob_nest_end(&b, c);
-		blob_put_int32(&b, UBUS_ATTR_STATUS, 0);
+		blob_buf_close_array(&b, c);
+		blob_buf_put_i32(&b, 0);
 		ubusd_send_msg_from_blob(cl, ub, UBUS_MSG_STATUS);
 	}
 
 	ub->hdr.peer = cl->id.id;
-	method = blob_data(attr[UBUS_ATTR_METHOD]);
+	method = blob_attr_data(attr[UBUS_ATTR_METHOD]);
 	list_for_each_entry(s, &obj->subscribers, list) {
-		blob_buf_init(&b, 0);
+		blob_buf_reset(&b);
 		if (no_reply)
-			blob_put_int8(&b, UBUS_ATTR_NO_REPLY, 1);
+			blob_buf_put_i8(&b, 1);
 		ubusd_forward_invoke(s->subscriber, method, ub, attr[UBUS_ATTR_DATA]);
 	}
 	ubusd_msg_free(ub);
@@ -323,7 +323,7 @@ static int ubusd_handle_response(struct ubusd_client *cl, struct ubusd_msg_buf *
 	    (ub->hdr.type == UBUS_MSG_DATA && !attr[UBUS_ATTR_DATA]))
 		goto error;
 
-	obj = ubusd_find_object(blob_get_u32(attr[UBUS_ATTR_OBJID]));
+	obj = ubusd_find_object(blob_attr_get_u32(attr[UBUS_ATTR_OBJID]));
 	if (!obj)
 		goto error;
 
@@ -334,7 +334,7 @@ static int ubusd_handle_response(struct ubusd_client *cl, struct ubusd_msg_buf *
 	if (!cl)
 		goto error;
 
-	ub->hdr.peer = blob_get_u32(attr[UBUS_ATTR_OBJID]);
+	ub->hdr.peer = blob_attr_get_u32(attr[UBUS_ATTR_OBJID]);
 	ubusd_msg_send(cl, ub, true);
 	return -1;
 
@@ -350,14 +350,14 @@ static int ubusd_handle_add_watch(struct ubusd_client *cl, struct ubusd_msg_buf 
 	if (!attr[UBUS_ATTR_OBJID] || !attr[UBUS_ATTR_TARGET])
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	obj = ubusd_find_object(blob_get_u32(attr[UBUS_ATTR_OBJID]));
+	obj = ubusd_find_object(blob_attr_get_u32(attr[UBUS_ATTR_OBJID]));
 	if (!obj)
 		return UBUS_STATUS_NOT_FOUND;
 
 	if (cl != obj->client)
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	target = ubusd_find_object(blob_get_u32(attr[UBUS_ATTR_TARGET]));
+	target = ubusd_find_object(blob_attr_get_u32(attr[UBUS_ATTR_TARGET]));
 	if (!target)
 		return UBUS_STATUS_NOT_FOUND;
 
@@ -377,14 +377,14 @@ static int ubusd_handle_remove_watch(struct ubusd_client *cl, struct ubusd_msg_b
 	if (!attr[UBUS_ATTR_OBJID] || !attr[UBUS_ATTR_TARGET])
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	obj = ubusd_find_object(blob_get_u32(attr[UBUS_ATTR_OBJID]));
+	obj = ubusd_find_object(blob_attr_get_u32(attr[UBUS_ATTR_OBJID]));
 	if (!obj)
 		return UBUS_STATUS_NOT_FOUND;
 
 	if (cl != obj->client)
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	id = blob_get_u32(attr[UBUS_ATTR_TARGET]);
+	id = blob_attr_get_u32(attr[UBUS_ATTR_TARGET]);
 	list_for_each_entry(s, &obj->target_list, target_list) {
 		if (s->target->id.id != id)
 			continue;
@@ -482,9 +482,9 @@ void ubusd_notify_subscription(struct ubusd_object *obj)
 	bool active = !list_empty(&obj->subscribers);
 	struct ubusd_msg_buf *ub;
 
-	blob_buf_init(&b, 0);
-	blob_put_int32(&b, UBUS_ATTR_OBJID, obj->id.id);
-	blob_put_int8(&b, UBUS_ATTR_ACTIVE, active);
+	blob_buf_reset(&b);
+	blob_buf_put_i32(&b, obj->id.id);
+	blob_buf_put_i8(&b, active);
 
 	ub = ubusd_msg_from_blob(false);
 	if (!ub)
@@ -498,9 +498,9 @@ void ubusd_notify_unsubscribe(struct ubusd_subscription *s)
 {
 	struct ubusd_msg_buf *ub;
 
-	blob_buf_init(&b, 0);
-	blob_put_int32(&b, UBUS_ATTR_OBJID, s->subscriber->id.id);
-	blob_put_int32(&b, UBUS_ATTR_TARGET, s->target->id.id);
+	blob_buf_reset(&b);
+	blob_buf_put_i32(&b, s->subscriber->id.id);
+	blob_buf_put_i32(&b, s->target->id.id);
 
 	ub = ubusd_msg_from_blob(false);
 	if (ub != NULL) {
@@ -511,17 +511,17 @@ void ubusd_notify_unsubscribe(struct ubusd_subscription *s)
 	ubusd_unsubscribe(s);
 }
 
-static void __constructor ubusd_proto_init(void)
+void ubusd_proto_init(void)
 {
 	ubusd_init_id_tree(&clients);
 
-	blob_buf_init(&b, 0);
-	blob_put_int32(&b, UBUS_ATTR_STATUS, 0);
+	blob_buf_init(&b, 0, 0);
+	blob_buf_put_i32(&b, 0);
 
 	retmsg = ubusd_msg_from_blob(false);
 	if (!retmsg)
 		exit(1);
 
 	retmsg->hdr.type = UBUS_MSG_STATUS;
-	retmsg_data = blob_data(blob_data(retmsg->data));
+	retmsg_data = blob_attr_data(blob_attr_data(retmsg->data));
 }

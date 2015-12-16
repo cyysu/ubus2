@@ -15,9 +15,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <libubox/avl-cmp.h>
+#include <libutype/avl-cmp.h>
+#include <libubus2/libubus2.h>
 
-#include "ubusmsg.h"
+//#include "ubusmsg.h"
 #include "ubusd_id.h"
 
 static int random_fd = -1;

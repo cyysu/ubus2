@@ -38,7 +38,7 @@ static void ubusd_unref_object_type(struct ubusd_object_type *type)
 static bool ubusd_create_obj_method(struct ubusd_object_type *type, struct blob_attr *attr)
 {
 	struct ubusd_method *m;
-	int bloblen = blob_raw_len(attr);
+	int bloblen = blob_attr_raw_len(attr);
 
 	m = calloc(1, sizeof(*m) + bloblen);
 	if (!m)
@@ -46,7 +46,7 @@ static bool ubusd_create_obj_method(struct ubusd_object_type *type, struct blob_
 
 	list_add_tail(&m->list, &type->methods);
 	memcpy(m->data, attr, bloblen);
-	m->name = strdup(blobmsg_name(m->data));
+	m->name = strdup(blob_attr_get_string(attr));
 
 	return true;
 }
@@ -54,8 +54,6 @@ static bool ubusd_create_obj_method(struct ubusd_object_type *type, struct blob_
 static struct ubusd_object_type *ubusd_create_obj_type(struct blob_attr *sig)
 {
 	struct ubusd_object_type *type;
-	struct blob_attr *pos;
-	int rem;
 
 	type = calloc(1, sizeof(*type));
 	if (!type)
@@ -68,9 +66,10 @@ static struct ubusd_object_type *ubusd_create_obj_type(struct blob_attr *sig)
 
 	INIT_LIST_HEAD(&type->methods);
 
-	blob_for_each_attr(pos, sig, rem) {
-		if (!blobmsg_check_attr(pos, true))
-			goto error_unref;
+	//blob_for_each_attr(pos, sig, rem) {
+	for(struct blob_attr *pos = blob_attr_first_child(sig); pos; pos = blob_attr_next_child(sig, pos)){
+		//if (!blobmsg_check_attr(pos, true))
+	    //		goto error_unref;
 
 		if (!ubusd_create_obj_method(type, pos))
 			goto error_unref;
@@ -133,7 +132,7 @@ struct ubusd_object *ubusd_create_object(struct ubusd_client *cl, struct blob_at
 	struct ubusd_object_type *type = NULL;
 
 	if (attr[UBUS_ATTR_OBJTYPE])
-		type = ubusd_get_obj_type(blob_get_u32(attr[UBUS_ATTR_OBJTYPE]));
+		type = ubusd_get_obj_type(blob_attr_get_u32(attr[UBUS_ATTR_OBJTYPE]));
 	else if (attr[UBUS_ATTR_SIGNATURE])
 		type = ubusd_create_obj_type(attr[UBUS_ATTR_SIGNATURE]);
 
@@ -145,7 +144,7 @@ struct ubusd_object *ubusd_create_object(struct ubusd_client *cl, struct blob_at
 		return NULL;
 
 	if (attr[UBUS_ATTR_OBJPATH]) {
-		obj->path.key = strdup(blob_data(attr[UBUS_ATTR_OBJPATH]));
+		obj->path.key = strdup(blob_attr_data(attr[UBUS_ATTR_OBJPATH]));
 		if (!obj->path.key)
 			goto free;
 
@@ -222,8 +221,7 @@ void ubusd_free_object(struct ubusd_object *obj)
 	free(obj);
 }
 
-static void __constructor ubusd_obj_init(void)
-{
+void ubusd_obj_init(void){
 	ubusd_init_id_tree(&objects);
 	ubusd_init_id_tree(&obj_types);
 	ubusd_init_string_tree(&path, false);

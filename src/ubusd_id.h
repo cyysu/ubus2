@@ -14,7 +14,7 @@
 #ifndef __UBUSD_ID_H
 #define __UBUSD_ID_H
 
-#include <libubox/avl.h>
+#include <libutype/avl.h>
 #include <stdint.h>
 
 struct ubusd_id {

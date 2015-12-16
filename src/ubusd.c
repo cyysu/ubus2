@@ -22,12 +22,14 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include <libubox/blob.h>
-#include <libubox/uloop.h>
-#include <libubox/usock.h>
-#include <libubox/list.h>
+#include <blobpack/blobpack.h>
+#include <libusys/uloop.h>
+#include <libusys/usock.h>
+#include <libutype/list.h>
 
 #include "ubusd.h"
+
+static struct uloop uloop; 
 
 static struct ubusd_msg_buf *ubusd_msg_ref(struct ubusd_msg_buf *ub)
 {
@@ -146,7 +148,7 @@ void ubusd_msg_send(struct ubusd_client *cl, struct ubusd_msg_buf *ub, bool free
 		cl->txq_ofs = written;
 
 		/* get an event once we can write to the socket again */
-		uloop_fd_add(&cl->sock, ULOOP_READ | ULOOP_WRITE | ULOOP_EDGE_TRIGGER);
+		uloop_add_fd(&uloop, &cl->sock, ULOOP_READ | ULOOP_WRITE | ULOOP_EDGE_TRIGGER);
 	}
 	ubusd_msg_enqueue(cl, ub);
 
@@ -181,7 +183,7 @@ static void handle_client_disconnect(struct ubusd_client *cl)
 	ubusd_proto_free_client(cl);
 	if (cl->pending_msg_fd >= 0)
 		close(cl->pending_msg_fd);
-	uloop_fd_delete(&cl->sock);
+	uloop_remove_fd(&uloop, &cl->sock);
 	close(cl->sock.fd);
 	free(cl);
 }
@@ -232,7 +234,7 @@ static void client_cb(struct uloop_fd *sock, unsigned int events)
 	/* prevent further ULOOP_WRITE events if we don't have data
 	 * to send anymore */
 	if (!ubusd_msg_head(cl) && (events & ULOOP_WRITE))
-		uloop_fd_add(sock, ULOOP_READ | ULOOP_EDGE_TRIGGER);
+		uloop_add_fd(&uloop, sock, ULOOP_READ | ULOOP_EDGE_TRIGGER);
 
 retry:
 	if (!sock->eof && cl->pending_msg_offset < sizeof(cl->hdrbuf)) {
@@ -263,10 +265,10 @@ retry:
 		if (cl->pending_msg_offset < sizeof(cl->hdrbuf))
 			goto out;
 
-		if (blob_pad_len(&cl->hdrbuf.data) > UBUS_MAX_MSGLEN)
+		if (blob_attr_pad_len(&cl->hdrbuf.data) > UBUS_MAX_MSGLEN)
 			goto disconnect;
 
-		cl->pending_msg = ubusd_msg_new(NULL, blob_raw_len(&cl->hdrbuf.data), false);
+		cl->pending_msg = ubusd_msg_new(NULL, blob_attr_raw_len(&cl->hdrbuf.data), false);
 		if (!cl->pending_msg)
 			goto disconnect;
 
@@ -277,7 +279,7 @@ retry:
 	ub = cl->pending_msg;
 	if (ub) {
 		int offset = cl->pending_msg_offset - sizeof(ub->hdr);
-		int len = blob_raw_len(ub->data) - offset;
+		int len = blob_attr_raw_len(ub->data) - offset;
 		int bytes = 0;
 
 		if (len > 0) {
@@ -326,7 +328,7 @@ static bool get_next_connection(int fd)
 
 	cl = ubusd_proto_new_client(client_fd, client_cb);
 	if (cl)
-		uloop_fd_add(&cl->sock, ULOOP_READ | ULOOP_EDGE_TRIGGER);
+		uloop_add_fd(&uloop, &cl->sock, ULOOP_READ | ULOOP_EDGE_TRIGGER);
 	else
 		close(client_fd);
 
@@ -355,6 +357,9 @@ static int usage(const char *progname)
 	return 1;
 }
 
+void ubusd_obj_init(); 
+void ubusd_proto_init(); 
+
 int main(int argc, char **argv)
 {
 	const char *ubusd_socket = UBUS_UNIX_SOCKET;
@@ -363,7 +368,12 @@ int main(int argc, char **argv)
 
 	signal(SIGPIPE, SIG_IGN);
 
-	uloop_init();
+	printf("initializing uloop\n"); 
+
+	ubusd_obj_init(); 
+	ubusd_proto_init(); 
+
+	uloop_init(&uloop);
 
 	while ((ch = getopt(argc, argv, "s:")) != -1) {
 		switch (ch) {
@@ -375,6 +385,8 @@ int main(int argc, char **argv)
 		}
 	}
 
+	printf("preparing ubus sockets\n"); 
+
 	unlink(ubusd_socket);
 	umask(0177);
 	server_fd.fd = usock(USOCK_UNIX | USOCK_SERVER | USOCK_NONBLOCK, ubusd_socket, NULL);
@@ -383,12 +395,12 @@ int main(int argc, char **argv)
 		ret = -1;
 		goto out;
 	}
-	uloop_fd_add(&server_fd, ULOOP_READ | ULOOP_EDGE_TRIGGER);
+	uloop_add_fd(&uloop, &server_fd, ULOOP_READ | ULOOP_EDGE_TRIGGER);
 
-	uloop_run();
+	uloop_run(&uloop);
 	unlink(ubusd_socket);
 
 out:
-	uloop_done();
+	uloop_destroy(&uloop);
 	return ret;
 }

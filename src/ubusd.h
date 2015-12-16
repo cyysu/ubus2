@@ -14,9 +14,9 @@
 #ifndef __UBUSD_H
 #define __UBUSD_H
 
-#include <libubox/list.h>
-#include <libubox/uloop.h>
-#include <libubox/blobmsg.h>
+#include <libutype/list.h>
+#include <libusys/uloop.h>
+#include <blobpack/blobpack.h>
 #include <libubus2/libubus2.h>
 
 #include "ubusd_id.h"
@@ -51,6 +51,7 @@ struct ubusd_client {
 		struct ubus_msghdr hdr;
 		struct blob_attr data;
 	} hdrbuf;
+	struct uloop uloop; 
 };
 
 struct ubusd_path {
