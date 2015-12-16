@@ -16,12 +16,9 @@
 
 #include "ubusd.h"
 
-struct blob_buf b;
 static struct ubusd_msg_buf *retmsg;
 static int *retmsg_data;
 static struct avl_tree clients;
-
-static struct blob_attr *attrbuf[UBUS_ATTR_MAX];
 
 typedef int (*ubusd_cmd_cb)(struct ubusd_client *cl, struct ubusd_msg_buf *ub, struct blob_attr **attr);
 
@@ -33,12 +30,6 @@ static const struct blob_attr_policy ubusd_policy[UBUS_ATTR_MAX] = {
 	[UBUS_ATTR_STATUS] = { .type = BLOB_ATTR_INT32 },
 	[UBUS_ATTR_METHOD] = { .type = BLOB_ATTR_STRING },
 };
-
-static struct blob_attr **ubusd_parse_msg(struct blob_attr *msg)
-{
-	blob_attr_parse(msg, attrbuf, ubusd_policy, UBUS_ATTR_MAX);
-	return attrbuf;
-}
 
 static void ubusd_msg_close_fd(struct ubusd_msg_buf *ub)
 {
@@ -158,15 +149,27 @@ static void ubusd_send_obj(struct ubusd_client *cl, struct ubusd_msg_buf *ub, st
 
 	blob_buf_reset(&b);
 
-	if (obj->path.key)
-		blob_buf_put_string(&b, obj->path.key);
-	blob_buf_put_i32(&b, obj->id.id);
-	blob_buf_put_i32(&b, obj->type->id.id);
+	printf("sending object %p %p\n", obj, obj->type); 
 
-	s = blob_buf_open_array(&b);
-	list_for_each_entry(m, &obj->type->methods, list)
-		blob_buf_put_attr(&b, m->data);
-	blob_buf_close_array(&b, s);
+	blob_offset_t tbl = blob_buf_open_table(&b); 
+		blob_buf_put_string(&b, "id"); 
+		blob_buf_put_i32(&b, obj->id.id);
+		blob_buf_put_string(&b, "client"); 
+		blob_buf_put_i32(&b, obj->client->id.id); 
+
+		if (obj->path.key) {
+			blob_buf_put_string(&b, "path"); 
+			blob_buf_put_string(&b, obj->path.key);
+		}
+		blob_buf_put_string(&b, "type"); 
+		blob_buf_put_i32(&b, obj->type->id.id);
+		
+		blob_buf_put_string(&b, "methods"); 
+		s = blob_buf_open_array(&b);
+		list_for_each_entry(m, &obj->type->methods, list)
+			blob_buf_put_attr(&b, m->data);
+		blob_buf_close_array(&b, s);
+	blob_buf_close_table(&b, tbl); 
 
 	ubusd_send_msg_from_blob(cl, ub, UBUS_MSG_DATA);
 }
@@ -417,14 +420,20 @@ void ubusd_proto_receive_message(struct ubusd_client *cl, struct ubusd_msg_buf *
 	retmsg->hdr.seq = ub->hdr.seq;
 	retmsg->hdr.peer = ub->hdr.peer;
 
+	blob_attr_dump(ub->data); 
+
 	if (ub->hdr.type < __UBUS_MSG_LAST)
 		cb = handlers[ub->hdr.type];
 
 	if (ub->hdr.type != UBUS_MSG_STATUS)
 		ubusd_msg_close_fd(ub);
 
+	struct blob_attr *attrbuf[UBUS_ATTR_MAX]; 
+
+	ubus_message_parse(ub->hdr.type, ub->data, attrbuf); 
+
 	if (cb)
-		ret = cb(cl, ub, ubusd_parse_msg(ub->data));
+		ret = cb(cl, ub, attrbuf);
 	else
 		ret = UBUS_STATUS_INVALID_COMMAND;
 
@@ -437,18 +446,12 @@ void ubusd_proto_receive_message(struct ubusd_client *cl, struct ubusd_msg_buf *
 	ubusd_msg_send(cl, retmsg, false);
 }
 
-struct ubusd_client *ubusd_proto_new_client(int fd, uloop_fd_handler cb)
+struct ubusd_client *ubusd_proto_new_client(int fd)
 {
-	struct ubusd_client *cl;
-
-	cl = calloc(1, sizeof(*cl));
+	struct ubusd_client *cl = ubusd_client_new(fd); 
+	
 	if (!cl)
 		return NULL;
-
-	INIT_LIST_HEAD(&cl->objects);
-	cl->sock.fd = fd;
-	cl->sock.cb = cb;
-	cl->pending_msg_fd = -1;
 
 	if (!ubusd_alloc_id(&clients, &cl->id, 0))
 		goto free;
@@ -461,7 +464,7 @@ struct ubusd_client *ubusd_proto_new_client(int fd, uloop_fd_handler cb)
 delete:
 	ubusd_free_id(&clients, &cl->id);
 free:
-	free(cl);
+	ubusd_client_delete(&cl);
 	return NULL;
 }
 
@@ -515,7 +518,7 @@ void ubusd_proto_init(void)
 {
 	ubusd_init_id_tree(&clients);
 
-	blob_buf_init(&b, 0, 0);
+	blob_buf_reset(&b);
 	blob_buf_put_i32(&b, 0);
 
 	retmsg = ubusd_msg_from_blob(false);

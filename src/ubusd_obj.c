@@ -131,6 +131,12 @@ struct ubusd_object *ubusd_create_object(struct ubusd_client *cl, struct blob_at
 	struct ubusd_object *obj;
 	struct ubusd_object_type *type = NULL;
 
+	printf("Add object: "); 
+	for(int c = 0; c < UBUS_ATTR_MAX; c++){
+		printf("%p ", attr[c]); 
+	}
+	printf("\n"); 
+
 	if (attr[UBUS_ATTR_OBJTYPE])
 		type = ubusd_get_obj_type(blob_attr_get_u32(attr[UBUS_ATTR_OBJTYPE]));
 	else if (attr[UBUS_ATTR_SIGNATURE])

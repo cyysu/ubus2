@@ -27,43 +27,19 @@
 
 extern struct blob_buf b;
 
-struct ubusd_msg_buf {
-	uint32_t refcount; /* ~0: uses external data buffer */
-	struct ubus_msghdr hdr;
-	struct blob_attr *data;
-	int fd;
-	int len;
-};
-
-struct ubusd_client {
-	struct ubusd_id id;
-	struct uloop_fd sock;
-
-	struct list_head objects;
-
-	struct ubusd_msg_buf *tx_queue[UBUSD_CLIENT_BACKLOG];
-	unsigned int txq_cur, txq_tail, txq_ofs;
-
-	struct ubusd_msg_buf *pending_msg;
-	int pending_msg_offset;
-	int pending_msg_fd;
-	struct {
-		struct ubus_msghdr hdr;
-		struct blob_attr data;
-	} hdrbuf;
-	struct uloop uloop; 
-};
-
 struct ubusd_path {
 	struct list_head list;
 	const char name[];
 };
 
+#include "ubusd_client.h"
+#include "ubusd_msg.h"
+
 struct ubusd_msg_buf *ubusd_msg_new(void *data, int len, bool shared);
 void ubusd_msg_send(struct ubusd_client *cl, struct ubusd_msg_buf *ub, bool free);
 void ubusd_msg_free(struct ubusd_msg_buf *ub);
 
-struct ubusd_client *ubusd_proto_new_client(int fd, uloop_fd_handler cb);
+struct ubusd_client *ubusd_proto_new_client(int fd);
 void ubusd_proto_receive_message(struct ubusd_client *cl, struct ubusd_msg_buf *ub);
 void ubusd_proto_free_client(struct ubusd_client *cl);
 

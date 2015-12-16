@@ -54,7 +54,7 @@ static void receive_list_result(struct ubus_context *ctx, struct ubus_object_dat
 		return;
 	}
 
-	printf("'%s' @%08x\n", obj->path, obj->id);
+	printf("'%s' @%08x @%08x\n", obj->path, obj->id, obj->client_id);
 
 	if (!obj->signature)
 		return;
@@ -62,7 +62,7 @@ static void receive_list_result(struct ubus_context *ctx, struct ubus_object_dat
 	//blob_for_each_attr(cur, obj->signature, rem) {
 	for(struct blob_attr *cur = blob_attr_first_child(obj->signature); cur; cur = blob_attr_next_child(obj->signature, cur)){
 		s = blob_buf_format_json_with_cb(cur, false, format_type, NULL, -1);
-		printf("\t%s\n", s);
+		printf("\t%s ", s);
 		free(s);
 	}
 }
@@ -110,7 +110,7 @@ static int ubus_cli_call(struct ubus_context *ctx, int argc, char **argv)
 	if (argc < 2 || argc > 3)
 		return -2;
 
-	blob_buf_init(&buf, 0, 0);
+	blob_buf_reset(&buf);
 	if (argc == 3 && !blob_buf_add_json_from_string(&buf, argv[2])) {
 		if (!simple_output)
 			fprintf(stderr, "Failed to parse message data\n");
@@ -174,7 +174,7 @@ static int ubus_cli_send(struct ubus_context *ctx, int argc, char **argv)
 	if (argc < 1 || argc > 2)
 		return -2;
 
-	blob_buf_init(&buf, 0, 0);
+	blob_buf_reset(&buf);
 
 	if (argc == 2 && !blob_buf_add_json_from_string(&buf, argv[1])) {
 		if (!simple_output)
@@ -326,6 +326,8 @@ int main(int argc, char **argv)
 	char *cmd;
 	int ret = 0;
 	int i, ch;
+
+	blob_buf_init(&buf, 0, 0); 
 
 	progname = argv[0];
 
