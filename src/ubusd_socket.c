@@ -1,3 +1,14 @@
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/uio.h>
+#include <signal.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+#include "ubusd.h"
+
+static void _socket_cb(struct uloop_fd *sock, unsigned int events); 
 
 static int ubusd_msg_writev(int fd, struct ubusd_msg_buf *ub, int offset)
 {
@@ -38,10 +49,39 @@ static int ubusd_msg_writev(int fd, struct ubusd_msg_buf *ub, int offset)
 	}
 }
 
-/* takes the msgbuf reference */
-void ubusd_msg_send(struct ubusd_client *cl, struct ubusd_msg_buf *ub, bool free)
+static void ubusd_msg_enqueue(struct ubusd_client *cl, struct ubusd_msg_buf *ub)
 {
+	if (cl->tx_queue[cl->txq_tail])
+		return;
+
+	cl->tx_queue[cl->txq_tail] = ubusd_msg_ref(ub);
+	cl->txq_tail = (cl->txq_tail + 1) % ARRAY_SIZE(cl->tx_queue);
+}
+
+static struct ubusd_msg_buf *ubusd_msg_head(struct ubusd_client *cl)
+{
+	return cl->tx_queue[cl->txq_cur];
+}
+
+static void ubusd_msg_dequeue(struct ubusd_client *cl)
+{
+	struct ubusd_msg_buf *ub = ubusd_msg_head(cl);
+
+	if (!ub)
+		return;
+
+	ubusd_msg_free(ub);
+	cl->txq_ofs = 0;
+	cl->tx_queue[cl->txq_cur] = NULL;
+	cl->txq_cur = (cl->txq_cur + 1) % ARRAY_SIZE(cl->tx_queue);
+}
+
+/* takes the msgbuf reference */
+void ubusd_msg_send(struct ubusd_client *cl, struct ubusd_msg_buf *ub, bool free){
 	int written;
+
+	printf("OUT %s seq=%d peer=%08x: ", ubus_message_types[ub->hdr.type], ub->hdr.seq, ub->hdr.peer);
+	blob_attr_dump_json(ub->data); 
 
 	if (!cl->tx_queue[cl->txq_cur]) {
 		written = ubusd_msg_writev(cl->sock.fd, ub, 0);
@@ -54,7 +94,7 @@ void ubusd_msg_send(struct ubusd_client *cl, struct ubusd_msg_buf *ub, bool free
 		cl->txq_ofs = written;
 
 		/* get an event once we can write to the socket again */
-		uloop_add_fd(&uloop, &cl->sock, ULOOP_READ | ULOOP_WRITE | ULOOP_EDGE_TRIGGER);
+		uloop_add_fd(&cl->uloop, &cl->sock, ULOOP_READ | ULOOP_WRITE | ULOOP_EDGE_TRIGGER);
 	}
 	ubusd_msg_enqueue(cl, ub);
 
@@ -63,11 +103,20 @@ out:
 		ubusd_msg_free(ub);
 }
 
-static void client_cb(struct uloop_fd *sock, unsigned int events)
-{
+void ubusd_socket_init(struct ubusd_client *self, int fd){
+	self->sock.fd = fd; 
+	self->sock.cb = _socket_cb;
+}
+
+void ubusd_socket_destroy(struct ubusd_client *self){
+	while (ubusd_msg_head(self))
+		ubusd_msg_dequeue(self);
+}
+
+static void _socket_cb(struct uloop_fd *sock, unsigned int events){
 	struct ubusd_client *cl = container_of(sock, struct ubusd_client, sock);
 	struct ubusd_msg_buf *ub;
-	static struct iovec iov;
+	static struct iovec iov; 
 	static struct {
 		struct cmsghdr h;
 		int fd;
@@ -109,7 +158,7 @@ static void client_cb(struct uloop_fd *sock, unsigned int events)
 	/* prevent further ULOOP_WRITE events if we don't have data
 	 * to send anymore */
 	if (!ubusd_msg_head(cl) && (events & ULOOP_WRITE))
-		uloop_add_fd(&uloop, sock, ULOOP_READ | ULOOP_EDGE_TRIGGER);
+		uloop_add_fd(&cl->uloop, sock, ULOOP_READ | ULOOP_EDGE_TRIGGER);
 
 retry:
 	if (!sock->eof && cl->pending_msg_offset < sizeof(cl->hdrbuf)) {
@@ -173,7 +222,10 @@ retry:
 		cl->pending_msg_fd = -1;
 		cl->pending_msg_offset = 0;
 		cl->pending_msg = NULL;
-		ubusd_proto_receive_message(cl, ub);
+		if(cl->on_message){
+			cl->on_message(cl, ub); 
+			//ubusd_proto_receive_message(cl, ub);
+		}
 		goto retry;
 	}
 
@@ -182,6 +234,15 @@ out:
 		return;
 
 disconnect:
-	handle_client_disconnect(cl);
+	if(cl->on_disconnected){
+		cl->on_disconnected(cl); 
+	}
+}
+
+void ubusd_socket_on_message(struct ubusd_client *self, void (*cb)(struct ubusd_client *self, struct ubusd_msg_buf *ub)){
+	self->on_message = cb; 
+}
+void ubusd_socket_on_disconnect(struct ubusd_client *self, void (*cb)(struct ubusd_client *self)){
+	self->on_disconnected = cb; 
 }
 

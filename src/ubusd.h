@@ -34,6 +34,7 @@ struct ubusd_path {
 
 #include "ubusd_client.h"
 #include "ubusd_msg.h"
+#include "ubusd_socket.h"
 
 struct ubusd_msg_buf *ubusd_msg_new(void *data, int len, bool shared);
 void ubusd_msg_send(struct ubusd_client *cl, struct ubusd_msg_buf *ub, bool free);

@@ -7,6 +7,7 @@ SOURCE=\
 	src/ubusd_proto.c \
 	src/ubusd_event.c \
 	src/ubusd_client.c \
+	src/ubusd_socket.c \
 	src/ubusd_msg.c \
 	src/ubusd.c 
 

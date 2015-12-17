@@ -149,8 +149,6 @@ static void ubusd_send_obj(struct ubusd_client *cl, struct ubusd_msg_buf *ub, st
 
 	blob_buf_reset(&b);
 
-	printf("sending object %p %p\n", obj, obj->type); 
-
 	blob_offset_t tbl = blob_buf_open_table(&b); 
 		blob_buf_put_string(&b, "id"); 
 		blob_buf_put_i32(&b, obj->id.id);
@@ -165,10 +163,10 @@ static void ubusd_send_obj(struct ubusd_client *cl, struct ubusd_msg_buf *ub, st
 		blob_buf_put_i32(&b, obj->type->id.id);
 		
 		blob_buf_put_string(&b, "methods"); 
-		s = blob_buf_open_array(&b);
+		s = blob_buf_open_table(&b);
 		list_for_each_entry(m, &obj->type->methods, list)
 			blob_buf_put_attr(&b, m->data);
-		blob_buf_close_array(&b, s);
+		blob_buf_close_table(&b, s);
 	blob_buf_close_table(&b, tbl); 
 
 	ubusd_send_msg_from_blob(cl, ub, UBUS_MSG_DATA);
@@ -420,7 +418,8 @@ void ubusd_proto_receive_message(struct ubusd_client *cl, struct ubusd_msg_buf *
 	retmsg->hdr.seq = ub->hdr.seq;
 	retmsg->hdr.peer = ub->hdr.peer;
 
-	blob_attr_dump(ub->data); 
+	printf("IN %s seq=%d peer=%08x: ", ubus_message_types[ub->hdr.type], ub->hdr.seq, ub->hdr.peer);
+	blob_attr_dump_json(ub->data); 
 
 	if (ub->hdr.type < __UBUS_MSG_LAST)
 		cb = handlers[ub->hdr.type];
@@ -430,6 +429,7 @@ void ubusd_proto_receive_message(struct ubusd_client *cl, struct ubusd_msg_buf *
 
 	struct blob_attr *attrbuf[UBUS_ATTR_MAX]; 
 
+	
 	ubus_message_parse(ub->hdr.type, ub->data, attrbuf); 
 
 	if (cb)

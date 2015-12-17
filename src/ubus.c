@@ -72,7 +72,7 @@ static void receive_call_result_data(struct ubus_request *req, int type, struct 
 	char *str;
 	if (!msg)
 		return;
-
+	
 	str = blob_buf_format_json_indent(msg, true, simple_output ? -1 : 0);
 	printf("%s\n", str);
 	free(str);
