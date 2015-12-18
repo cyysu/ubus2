@@ -136,6 +136,7 @@ struct ubusd_object *ubusd_create_object(struct ubusd_client *cl, struct blob_at
 		printf("%p ", attr[c]); 
 	}
 	printf("\n"); 
+	blob_attr_dump_json(attr[UBUS_ATTR_SIGNATURE]); 
 
 	if (attr[UBUS_ATTR_OBJTYPE])
 		type = ubusd_get_obj_type(blob_attr_get_u32(attr[UBUS_ATTR_OBJTYPE]));

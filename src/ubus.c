@@ -65,6 +65,7 @@ static void receive_list_result(struct ubus_context *ctx, struct ubus_object_dat
 		printf("\t%s ", s);
 		free(s);
 	}
+	printf("\n"); 
 }
 
 static void receive_call_result_data(struct ubus_request *req, int type, struct blob_attr *msg)
