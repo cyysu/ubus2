@@ -21,6 +21,7 @@ static int timeout = 30;
 static bool simple_output = false;
 static int verbose = 0;
 
+/*
 static const char *format_type(void *priv, struct blob_attr *attr)
 {
 	static const char * const attr_types[] = {
@@ -44,7 +45,6 @@ static const char *format_type(void *priv, struct blob_attr *attr)
 
 	return type;
 }
-
 static void receive_list_result(struct ubus_context *ctx, struct ubus_object_data *obj, void *priv)
 {
 	char *s;
@@ -67,7 +67,7 @@ static void receive_list_result(struct ubus_context *ctx, struct ubus_object_dat
 	}
 	printf("\n"); 
 }
-
+*/
 static void receive_call_result_data(struct ubus_request *req, int type, struct blob_attr *msg)
 {
 	char *str;
@@ -78,7 +78,7 @@ static void receive_call_result_data(struct ubus_request *req, int type, struct 
 	printf("%s\n", str);
 	free(str);
 }
-
+/*
 static void receive_event(struct ubus_context *ctx, struct ubus_event_handler *ev,
 			  const char *type, struct blob_attr *msg)
 {
@@ -102,7 +102,7 @@ static int ubus_cli_list(struct ubus_context *ctx, int argc, char **argv)
 
 	return ubus_lookup(ctx, path, receive_list_result, NULL);
 }
-
+*/
 static int ubus_cli_call(struct ubus_context *ctx, int argc, char **argv)
 {
 	uint32_t id;
@@ -124,7 +124,7 @@ static int ubus_cli_call(struct ubus_context *ctx, int argc, char **argv)
 
 	return ubus_invoke(ctx, id, argv[1], blob_buf_head(&buf), receive_call_result_data, NULL, timeout * 1000);
 }
-
+/*
 static int ubus_cli_listen(struct ubus_context *ctx, int argc, char **argv)
 {
 	static struct ubus_event_handler listener;
@@ -286,7 +286,7 @@ static int ubus_cli_wait_for(struct ubus_context *ctx, int argc, char **argv)
 
 	return ret;
 }
-
+*/
 
 static int usage(const char *prog)
 {
@@ -313,11 +313,11 @@ struct {
 	const char *name;
 	int (*cb)(struct ubus_context *ctx, int argc, char **argv);
 } commands[] = {
-	{ "list", ubus_cli_list },
+	//{ "list", ubus_cli_list },
 	{ "call", ubus_cli_call },
-	{ "listen", ubus_cli_listen },
-	{ "send", ubus_cli_send },
-	{ "wait_for", ubus_cli_wait_for },
+	//{ "listen", ubus_cli_listen },
+	//{ "send", ubus_cli_send },
+	//{ "wait_for", ubus_cli_wait_for },
 };
 
 int main(int argc, char **argv)

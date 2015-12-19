@@ -74,10 +74,4 @@ static inline struct ubusd_object *ubusd_find_object(uint32_t objid)
 	obj = container_of(id, struct ubusd_object, id);
 	return obj;
 }
-
-void ubusd_subscribe(struct ubusd_object *obj, struct ubusd_object *target);
-void ubusd_unsubscribe(struct ubusd_subscription *s);
-void ubusd_notify_unsubscribe(struct ubusd_subscription *s);
-void ubusd_notify_subscription(struct ubusd_object *obj);
-
 #endif

@@ -160,7 +160,7 @@ struct ubusd_object *ubusd_create_object(struct ubusd_client *cl, struct blob_at
 			obj->path.key = NULL;
 			goto free;
 		}
-		ubusd_send_obj_event(obj, true);
+		//ubusd_send_obj_event(obj, true);
 	}
 
 	obj->client = cl;
@@ -173,50 +173,21 @@ free:
 	return NULL;
 }
 
-void ubusd_subscribe(struct ubusd_object *obj, struct ubusd_object *target)
-{
-	struct ubusd_subscription *s;
-	bool first = list_empty(&target->subscribers);
-
-	s = calloc(1, sizeof(*s));
-	if (!s)
-		return;
-
-	s->subscriber = obj;
-	s->target = target;
-	list_add(&s->list, &target->subscribers);
-	list_add(&s->target_list, &obj->target_list);
-
-	if (first)
-		ubusd_notify_subscription(target);
-}
-
-void ubusd_unsubscribe(struct ubusd_subscription *s)
-{
-	struct ubusd_object *obj = s->target;
-
-	list_del(&s->list);
-	list_del(&s->target_list);
-	free(s);
-
-	if (list_empty(&obj->subscribers))
-		ubusd_notify_subscription(obj);
-}
-
 void ubusd_free_object(struct ubusd_object *obj)
 {
-	struct ubusd_subscription *s, *tmp;
+	//struct ubusd_subscription *s, *tmp;
 
+	/*
 	list_for_each_entry_safe(s, tmp, &obj->target_list, target_list) {
 		ubusd_unsubscribe(s);
 	}
 	list_for_each_entry_safe(s, tmp, &obj->subscribers, list) {
 		ubusd_notify_unsubscribe(s);
 	}
-
-	ubusd_event_cleanup_object(obj);
+*/
+	//ubusd_event_cleanup_object(obj);
 	if (obj->path.key) {
-		ubusd_send_obj_event(obj, false);
+		//ubusd_send_obj_event(obj, false);
 		avl_delete(&path, &obj->path);
 		free((void *) obj->path.key);
 	}
@@ -229,8 +200,4 @@ void ubusd_free_object(struct ubusd_object *obj)
 }
 
 void ubusd_obj_init(void){
-	ubusd_init_id_tree(&objects);
-	ubusd_init_id_tree(&obj_types);
-	ubusd_init_string_tree(&path, false);
-	ubusd_event_init();
-}
+	}

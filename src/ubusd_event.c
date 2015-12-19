@@ -124,7 +124,7 @@ static void ubusd_send_event_msg(struct ubusd_msg_buf **ub, struct ubusd_client 
 
 	if (!*ub) {
 		*ub = fill_cb(cb_priv, id);
-		(*ub)->hdr.type = UBUS_MSG_INVOKE;
+		(*ub)->hdr.type = UBUS_MSG_METHOD_CALL;
 		(*ub)->hdr.peer = 0;
 	}
 

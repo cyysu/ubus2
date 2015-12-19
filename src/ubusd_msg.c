@@ -55,3 +55,10 @@ void ubusd_msg_free(struct ubusd_msg_buf *ub)
 	}
 }
 
+void ubusd_msg_init(struct ubusd_msg_buf *ub, uint8_t type, uint16_t seq, uint32_t peer){
+	ub->hdr.version = 0;
+	ub->hdr.type = type;
+	ub->hdr.seq = seq;
+	ub->hdr.peer = peer;
+}
+

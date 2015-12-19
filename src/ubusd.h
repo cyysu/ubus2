@@ -14,9 +14,21 @@
 #ifndef __UBUSD_H
 #define __UBUSD_H
 
-#include <libutype/list.h>
-#include <libusys/uloop.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/uio.h>
+#ifdef FreeBSD
+#include <sys/param.h>
+#endif
+#include <signal.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+
 #include <blobpack/blobpack.h>
+#include <libusys/uloop.h>
+#include <libusys/usock.h>
+#include <libutype/list.h>
 #include <libubus2/libubus2.h>
 
 #include "ubusd_id.h"
@@ -32,17 +44,16 @@ struct ubusd_path {
 	const char name[];
 };
 
+#include "ubusd_context.h"
 #include "ubusd_client.h"
 #include "ubusd_msg.h"
-#include "ubusd_socket.h"
 
 struct ubusd_msg_buf *ubusd_msg_new(void *data, int len, bool shared);
 void ubusd_msg_send(struct ubusd_client *cl, struct ubusd_msg_buf *ub, bool free);
 void ubusd_msg_free(struct ubusd_msg_buf *ub);
 
-struct ubusd_client *ubusd_proto_new_client(int fd);
+
 void ubusd_proto_receive_message(struct ubusd_client *cl, struct ubusd_msg_buf *ub);
-void ubusd_proto_free_client(struct ubusd_client *cl);
 
 void ubusd_event_init(void);
 void ubusd_event_cleanup_object(struct ubusd_object *obj);
